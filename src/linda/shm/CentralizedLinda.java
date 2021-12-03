@@ -12,7 +12,7 @@ import java.util.concurrent.locks.ReentrantLock;
 public class CentralizedLinda implements Linda {
 
     private final Map<Integer, LinkedList<Tuple>> tuplesByLength = new HashMap<>();
-    private final List<Event> registeredEvents = new LinkedList<>();
+    private final LinkedList<Event> registeredEvents = new LinkedList<>();
 
     private final ReentrantLock lock = new ReentrantLock();
     private final Condition tupleAdded = lock.newCondition();
@@ -26,7 +26,6 @@ public class CentralizedLinda implements Linda {
 
         if(!onTupleAdded(t)) {
             // Tuple was not consumed by an Event.
-            getAssociatedList(t).addFirst(t);
             tupleAdded.signalAll();
         }
 
@@ -86,7 +85,7 @@ public class CentralizedLinda implements Linda {
                 continue;
             }
 
-            tupleList.remove(t);
+            removeTuple(t);
             foundT = t;
             break;
         }
@@ -129,11 +128,7 @@ public class CentralizedLinda implements Linda {
         }
 
         for (Tuple t : foundTuples) {
-            tupleList.remove(t);
-        }
-
-        if(tupleList.isEmpty()) {
-            tuplesByLength.remove(template.size());
+            removeTuple(t);
         }
 
         lock.unlock();
@@ -157,6 +152,13 @@ public class CentralizedLinda implements Linda {
         return foundTuples;
     }
 
+    /** Registers and binds and event to a template
+     * Adds mode.TAKE to the front of the list, mode.READ to the end of the list
+     * @param mode read or take mode.
+     * @param timing (potentially) immediate or only future firing.
+     * @param template the filtering template.
+     * @param callback the callback to call if a matching tuple appears.
+     */
     @Override
     public void eventRegister(eventMode mode, eventTiming timing, Tuple template, Callback callback) {
         lock.lock();
@@ -166,22 +168,29 @@ public class CentralizedLinda implements Linda {
         if(timing == eventTiming.IMMEDIATE && tuplesByLength.containsKey(template.size())) {
             LinkedList<Tuple> tuples = getAssociatedList(template);
             for (Tuple t : tuples) {
-                if (!checkEvent(ev, t)) {
+                if (!canFireEvent(ev, t)) {
                     continue;
                 }
-
-                // Found a tuple that fired the event.
-                // Event should not be registered, and tuple must be removed if eventMode is TAKE.
+                // Found a tuple that can fire the event.
+                // Event should not be registered.
                 registerEvent = false;
+                // Remove tuple if eventMode is TAKE
                 if (ev.mode == eventMode.TAKE) {
-                    tuples.remove(t);
+                    removeTuple(t);
                 }
+                // Call event
+                ev.callback.call(t);
                 break;
             }
         }
 
         if(registerEvent) {
-            registeredEvents.add(ev);
+            if(ev.mode == eventMode.READ) {
+                registeredEvents.add(ev);
+            }
+            else {
+                registeredEvents.addFirst(ev);
+            }
         }
 
         lock.unlock();
@@ -189,7 +198,10 @@ public class CentralizedLinda implements Linda {
 
     @Override
     public void debug(String prefix) {
-        System.out.println(prefix + (formatTuples() + formatEvents()).replaceAll("\n", "\n"+prefix));
+        lock.lock();
+        prefix = prefix + " ";
+        System.out.println(prefix + (formatTuples() + formatEvents()).replaceAll("\n", "\n"+prefix) + "- DEBUG END");
+        lock.unlock();
     }
 
     // Internal functions
@@ -200,17 +212,32 @@ public class CentralizedLinda implements Linda {
      */
     private boolean onTupleAdded(Tuple t) {
         // Executed in write lock context
+        boolean added = false;
+
         for (int i = 0; i < registeredEvents.size(); i++) {
             Event ev = registeredEvents.get(i);
-            if(!checkEvent(ev, t)) {
+            if(!canFireEvent(ev, t)) {
                 continue;
             }
 
+            if(ev.mode == eventMode.READ && !added) {
+                // Event callback might use added Tuple by registering new immediate event or reading/taking it.
+                getAssociatedList(t).addFirst(t);
+                added = true;
+            }
+
+            ev.callback.call(t);
             registeredEvents.remove(ev);
             if(ev.mode == eventMode.TAKE) {
                 // This tuple is no longer available because EventMode is TAKE.
+                // Tuple was not added because we start by events that take tuples.
+                assert !added;
                 return true;
             }
+        }
+
+        if(!added) {
+            getAssociatedList(t).addFirst(t);
         }
 
         return false;
@@ -219,15 +246,10 @@ public class CentralizedLinda implements Linda {
     /** Checks if a tuple can fire an event
      * @param ev Event to check
      * @param t Tuple reference
-     * @return whether t matches event template (and thus event is fired).
+     * @return whether t matches event template.
      */
-    private boolean checkEvent(Event ev, Tuple t) {
-        if (!ev.template.contains(t)) {
-            return false;
-        }
-
-        ev.callback.call(t);
-        return true;
+    private boolean canFireEvent(Event ev, Tuple t) {
+        return ev.template.contains(t);
     }
 
     private LinkedList<Tuple> getAssociatedList(Tuple t) {
@@ -236,6 +258,14 @@ public class CentralizedLinda implements Linda {
         }
 
         return tuplesByLength.get(t.size());
+    }
+
+    private void removeTuple(Tuple t) {
+        LinkedList<Tuple> associatedList = getAssociatedList(t);
+        associatedList.remove(t);
+        if(associatedList.isEmpty()) {
+            tuplesByLength.remove(t.size());
+        }
     }
 
     class Event {
