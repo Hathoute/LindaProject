@@ -5,8 +5,8 @@ import linda.*;
 public class BasicTest2 {
 
     public static void main(String[] a) {
-        final Linda linda = new linda.shm.CentralizedLinda();
-        //              final Linda linda = new linda.server.LindaClient("//localhost:4000/MonServeur");
+        //final Linda linda = new linda.shm.CentralizedLinda();
+                      final Linda linda = new linda.server.LindaClient("//localhost:4000/LindaServer");
                 
         for (int i = 1; i <= 3; i++) {
             final int j = i;
