@@ -4,6 +4,7 @@ import linda.Linda;
 import linda.Tuple;
 import linda.shm.CentralizedLinda;
 
+import java.io.PrintStream;
 import java.rmi.*;
 import java.rmi.server.*;
 import java.util.Collection;
@@ -32,27 +33,44 @@ public class LindaServer extends UnicastRemoteObject implements ServerInterface{
 
     @Override
     public Tuple tryTake(Tuple template) throws RemoteException {
-        return null;
+        return myLinda.tryTake(template);
     }
 
     @Override
     public Tuple tryRead(Tuple template) throws RemoteException {
-        return null;
+        return myLinda.tryRead(template);
     }
 
     @Override
     public Collection<Tuple> takeAll(Tuple template) throws RemoteException {
-        return null;
+        return myLinda.takeAll(template);
     }
 
     @Override
     public Collection<Tuple> readAll(Tuple template) throws RemoteException {
-        return null;
+        return myLinda.readAll(template);
     }
 
     @Override
-    public void eventRegister(Linda.eventMode mode, Linda.eventTiming timing, Tuple template, Callback callback) throws RemoteException {
+    public void eventRegister(Linda.eventMode mode, Linda.eventTiming timing, Tuple template, RCallback rcallback) throws RemoteException {
+            Callback callback = new Callback() {
+                @Override
+                public void call(Tuple t) {
+                    try {
+                        rcallback.call(t);
+                    } catch (RemoteException e) {
+                        e.printStackTrace();
+                    }
+                }
+            };
+            myLinda.eventRegister(mode,timing,template,callback);
+    }
 
-
+    @Override
+    public void debug(String prefixe, RPrintStream stream) throws RemoteException {
+        PrintStream serverStream = System.out;
+        System.setOut(stream);
+        myLinda.debug(prefixe);
+        System.setOut(serverStream);
     }
 }

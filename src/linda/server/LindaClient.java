@@ -8,6 +8,7 @@ import java.net.MalformedURLException;
 import java.rmi.Naming;
 import java.rmi.NotBoundException;
 import java.rmi.RemoteException;
+import java.rmi.server.UnicastRemoteObject;
 import java.util.Collection;
 
 /** Client part of a client/server implementation of Linda.
@@ -70,27 +71,57 @@ public class LindaClient implements Linda {
 
     @Override
     public Tuple tryRead(Tuple template) {
+        try {
+            return lc.tryRead(template);
+        } catch (RemoteException e) {
+            e.printStackTrace();
+        }
         return null;
     }
 
     @Override
     public Collection<Tuple> takeAll(Tuple template) {
+        try {
+            return lc.takeAll(template);
+        } catch (RemoteException e) {
+            e.printStackTrace();
+        }
         return null;
     }
 
     @Override
     public Collection<Tuple> readAll(Tuple template) {
+        try {
+            return lc.readAll(template);
+        } catch (RemoteException e) {
+            e.printStackTrace();
+        }
         return null;
     }
 
     @Override
     public void eventRegister(eventMode mode, eventTiming timing, Tuple template, Callback callback) {
 
+
+        try {
+            RCallback rcallback= new RC_implementation(callback);
+            UnicastRemoteObject.exportObject(rcallback, 0);
+            lc.eventRegister(mode, timing, template, rcallback);
+        } catch (RemoteException e) {
+            e.printStackTrace();
+        }
+
     }
 
     @Override
     public void debug(String prefix) {
-
+        try {
+            RPrintStream stream = new RPrintStream(System.out);
+            UnicastRemoteObject.exportObject(stream, 0);
+            lc.debug(prefix, stream);
+        } catch (RemoteException e) {
+            e.printStackTrace();
+        }
     }
 
     // TO BE COMPLETED

@@ -25,6 +25,8 @@ public interface ServerInterface extends Remote {
 
     public enum eventTiming { IMMEDIATE, FUTURE };
 
-    public void eventRegister(Linda.eventMode mode, Linda.eventTiming timing, Tuple template, Callback callback) throws RemoteException;
+    public void eventRegister(Linda.eventMode mode, Linda.eventTiming timing, Tuple template, RCallback rcallback) throws RemoteException;
+
+    public void debug(String prefixe, RPrintStream stream) throws RemoteException;
 
 }
