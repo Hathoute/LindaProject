@@ -6,9 +6,9 @@ import linda.Tuple;
 import java.rmi.RemoteException;
 import java.rmi.server.UnicastRemoteObject;
 
-public class RC_implementation implements RCallback{
+public class RCallbackImpl implements RCallback{
     private Callback callback;
-    public RC_implementation(Callback callback) throws RemoteException {
+    public RCallbackImpl(Callback callback) throws RemoteException {
         this.callback=callback;
     }
 

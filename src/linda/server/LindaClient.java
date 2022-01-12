@@ -4,9 +4,9 @@ import linda.Callback;
 import linda.Linda;
 import linda.Tuple;
 
-import java.net.MalformedURLException;
+import java.io.IOException;
+import java.io.OutputStream;
 import java.rmi.Naming;
-import java.rmi.NotBoundException;
 import java.rmi.RemoteException;
 import java.rmi.server.UnicastRemoteObject;
 import java.util.Collection;
@@ -104,7 +104,7 @@ public class LindaClient implements Linda {
 
 
         try {
-            RCallback rcallback= new RC_implementation(callback);
+            RCallback rcallback= new RCallbackImpl(callback);
             UnicastRemoteObject.exportObject(rcallback, 0);
             lc.eventRegister(mode, timing, template, rcallback);
         } catch (RemoteException e) {
@@ -116,9 +116,40 @@ public class LindaClient implements Linda {
     @Override
     public void debug(String prefix) {
         try {
-            RPrintStream stream = new RPrintStream(System.out);
+            ROutputStream stream = new ROutputStream() {
+                @Override
+                public void close() throws RemoteException {
+                    System.out.close();
+                }
+
+                @Override
+                public void flush() throws RemoteException {
+                    System.out.flush();
+                }
+
+                @Override
+                public void write(byte[] b) throws RemoteException {
+                    try {
+
+                        System.out.write(b);
+
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+
+                @Override
+                public void write(byte[] b, int off, int len) throws RemoteException {
+                    System.out.write(b, off, len);
+                }
+
+                @Override
+                public void write(int b) throws RemoteException {
+                    System.out.write(b);
+                }
+            };
             UnicastRemoteObject.exportObject(stream, 0);
-            lc.debug(prefix, stream);
+            System.out.print(lc.debug(prefix));
         } catch (RemoteException e) {
             e.printStackTrace();
         }

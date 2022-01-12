@@ -4,10 +4,7 @@ import java.rmi.*;
 import java.rmi.registry.*;
 public class Server {
     public static void main(String[] args) throws Exception {
-        try{
-            /* Pour la sécurité, facultatif dans l'exam
-            System.setProperty("java.security.policy","client.policy");
-            */
+        try {
             LindaServer ls = new LindaServer();
             int port = 4000; // port par défault: 1099
             String url = "localhost";
