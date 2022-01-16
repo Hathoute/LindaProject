@@ -6,8 +6,8 @@ public class BasicTest1 {
 
     public static void main(String[] a) {
                 
-        final Linda linda = new linda.shm.CentralizedLinda();
-        // final Linda linda = new linda.server.LindaClient("//localhost:4000/aaa");
+        //final Linda linda = new linda.shm.CentralizedLinda();
+        final Linda linda = new linda.server.LindaClient("//localhost:4000/LindaServer");
                 
         new Thread() {
             public void run() {
@@ -46,7 +46,7 @@ public class BasicTest1 {
                 Tuple t3 = new Tuple(4, "foo");
                 System.out.println("(2) write: " + t3);
                 linda.write(t3);
-                                
+
                 linda.debug("(2)");
 
             }

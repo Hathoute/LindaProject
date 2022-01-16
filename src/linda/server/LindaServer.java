@@ -1,4 +1,5 @@
 package linda.server;
+import linda.AsynchronousCallback;
 import linda.Callback;
 import linda.Linda;
 import linda.Tuple;
@@ -59,19 +60,26 @@ public class LindaServer extends UnicastRemoteObject implements ServerInterface{
 
     @Override
     public void eventRegister(Linda.eventMode mode, Linda.eventTiming timing, Tuple template, RCallback rcallback) throws RemoteException {
-            Callback callback = new Callback() {
-                @Override
-                public void call(Tuple t) {
-                    try {
-                        rcallback.call(t);
-                    } catch (RemoteException e) {
-                        e.printStackTrace();
-                    }
+        Callback callback = new Callback() {
+            @Override
+            public void call(Tuple t) {
+                try {
+                    rcallback.call(t);
+                } catch (RemoteException e) {
+                    e.printStackTrace();
                 }
-            };
-            myLinda.eventRegister(mode,timing,template,callback);
+            }
+        };
+        AsynchronousCallback cb = new AsynchronousCallback(callback);
+        myLinda.eventRegister(mode,timing,template,cb);
     }
 
+    @Override
+    public void debug(String prefix) throws RemoteException {
+        myLinda.debug(prefix);
+    }
+
+    /*
     @Override
     public String debug(String prefix) throws RemoteException {
         // Cette approche a été implémentée après avoir essayé de passer un RemoteOutputStream qui
@@ -112,5 +120,5 @@ public class LindaServer extends UnicastRemoteObject implements ServerInterface{
         }
 
         return new String(bytes, StandardCharsets.UTF_8);
-    }
+    }*/
 }

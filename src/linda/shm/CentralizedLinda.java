@@ -7,6 +7,7 @@ import linda.Tuple;
 import java.util.*;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.stream.Collectors;
 
 /** Shared memory implementation of Linda. */
 public class CentralizedLinda implements Linda {
@@ -15,7 +16,9 @@ public class CentralizedLinda implements Linda {
     private final LinkedList<Event> registeredEvents = new LinkedList<>();
 
     private final ReentrantLock lock = new ReentrantLock();
-    private final Condition tupleAdded = lock.newCondition();
+    private final LinkedList<Pair<Tuple, Condition>> readConditions = new LinkedList<>();
+    private final LinkedList<Pair<Tuple, Condition>> takeConditions = new LinkedList<>();
+    //private final Condition tupleAdded = lock.newCondition();
 
     public CentralizedLinda() {
     }
@@ -24,10 +27,8 @@ public class CentralizedLinda implements Linda {
     public void write(Tuple t) {
         lock.lock();
 
-        if(!onTupleAdded(t)) {
-            // Tuple was not consumed by an Event.
-            tupleAdded.signalAll();
-        }
+        getAssociatedList(t).addFirst(t);
+        onTupleAdded(t);
 
         lock.unlock();
     }
@@ -38,9 +39,13 @@ public class CentralizedLinda implements Linda {
         Tuple t = null;
 
         try {
-            while ((t = tryTake(template)) == null) {
-                tupleAdded.await();
+            if ((t = tryTake(template)) == null) {
+                Condition condition = lock.newCondition();
+                takeConditions.addLast(new Pair<>(template, condition));
+                condition.await();
             }
+
+            t = tryTake(template);
         } catch (InterruptedException e) {
             e.printStackTrace();
         } finally {
@@ -56,9 +61,13 @@ public class CentralizedLinda implements Linda {
         Tuple t = null;
 
         try {
-            while ((t = tryRead(template)) == null) {
-                tupleAdded.await();
+            if ((t = tryRead(template)) == null) {
+                Condition condition = lock.newCondition();
+                readConditions.addLast(new Pair<>(template, condition));
+                condition.await();
             }
+
+            t = tryRead(template);
         } catch (InterruptedException e) {
             e.printStackTrace();
         } finally {
@@ -208,39 +217,47 @@ public class CentralizedLinda implements Linda {
 
     /** Called when a Tuple is written to Linda.
      * @param t Tuple to write
-     * @return whether an event consumed the Tuple.
      */
-    private boolean onTupleAdded(Tuple t) {
-        // Executed in write lock context
-        boolean added = false;
+    private void onTupleAdded(Tuple t) {
+        // Un clone des evenements à l'instant actuel puisque les callbacks peuvent ajouter des evenements.
+        List<Event> currentEvents = (List<Event>) registeredEvents.clone();
 
-        for (int i = 0; i < registeredEvents.size(); i++) {
-            Event ev = registeredEvents.get(i);
-            if(!canFireEvent(ev, t)) {
-                continue;
-            }
+        // Check reads
+        for (Pair<Tuple, Condition> p : readConditions.stream()
+                .filter(p -> p.getFirst().contains(t))
+                .collect(Collectors.toList())) {
+            readConditions.remove(p);
+            p.getSecond().signal();
+        }
 
-            if(ev.mode == eventMode.READ && !added) {
-                // Event callback might use added Tuple by registering new immediate event or reading/taking it.
-                getAssociatedList(t).addFirst(t);
-                added = true;
-            }
-
-            ev.callback.call(t);
+        // Check read events
+        for (Event ev : currentEvents.stream()
+                    .filter(e -> e.mode == eventMode.READ && canFireEvent(e, t))
+                    .collect(Collectors.toList())) {
             registeredEvents.remove(ev);
-            if(ev.mode == eventMode.TAKE) {
-                // This tuple is no longer available because EventMode is TAKE.
-                // Tuple was not added because we start by events that take tuples.
-                assert !added;
-                return true;
-            }
+            ev.callback.call(t);
         }
 
-        if(!added) {
-            getAssociatedList(t).addFirst(t);
+
+        // Check first take
+        Pair<Tuple, Condition> takePair = takeConditions.stream()
+                .filter(p -> p.getFirst().contains(t))
+                .findFirst().orElse(null);
+        if(takePair != null) {
+            takeConditions.remove(takePair);
+            takePair.getSecond().signal();
+            return;
         }
 
-        return false;
+        // Check first take event
+        Event takeEvent = currentEvents.stream()
+                .filter(e -> e.mode == eventMode.TAKE && canFireEvent(e, t))
+                .findFirst().orElse(null);
+        if(takeEvent != null) {
+            getAssociatedList(t).remove(t);
+            registeredEvents.remove(takeEvent);
+            takeEvent.callback.call(t);
+        }
     }
 
     /** Checks if a tuple can fire an event
@@ -266,6 +283,31 @@ public class CentralizedLinda implements Linda {
         if(associatedList.isEmpty()) {
             tuplesByLength.remove(t.size());
         }
+    }
+
+    private String formatTuples() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Tuples in kernel: \n");
+
+        for (int size : tuplesByLength.keySet()) {
+            sb.append("\tTaille ").append(size).append(":\n");
+            for (Tuple t : tuplesByLength.get(size)) {
+                sb.append("\t\t").append(t).append("\n");
+            }
+        }
+
+        return sb.toString();
+    }
+
+    private String formatEvents() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("\nEvenements:\n");
+
+        for (Event ev : registeredEvents) {
+            sb.append("\t").append(ev).append('\n');
+        }
+
+        return sb.toString();
     }
 
     class Event {
@@ -300,29 +342,22 @@ public class CentralizedLinda implements Linda {
         }
     }
 
-    private String formatTuples() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("Tuples in kernel: \n");
+    class Pair<T1, T2> {
+        private T1 t1;
+        private T2 t2;
 
-        for (int size : tuplesByLength.keySet()) {
-            sb.append("\tTaille ").append(size).append(":\n");
-            for (Tuple t : tuplesByLength.get(size)) {
-                sb.append("\t\t").append(t).append("\n");
-            }
+        public Pair(T1 t1, T2 t2) {
+            this.t1 = t1;
+            this.t2 = t2;
         }
 
-        return sb.toString();
-    }
-
-    private String formatEvents() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("\nEvenements:\n");
-
-        for (Event ev : registeredEvents) {
-            sb.append("\t").append(ev).append('\n');
+        public T1 getFirst() {
+            return t1;
         }
 
-        return sb.toString();
+        public T2 getSecond() {
+            return t2;
+        }
     }
 
 }

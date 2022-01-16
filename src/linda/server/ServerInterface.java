@@ -27,6 +27,6 @@ public interface ServerInterface extends Remote {
 
     public void eventRegister(Linda.eventMode mode, Linda.eventTiming timing, Tuple template, RCallback rcallback) throws RemoteException;
 
-    public String debug(String prefixe) throws RemoteException;
+    public void debug(String prefix) throws RemoteException;
 
 }

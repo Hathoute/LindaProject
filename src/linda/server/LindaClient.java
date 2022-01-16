@@ -116,6 +116,15 @@ public class LindaClient implements Linda {
     @Override
     public void debug(String prefix) {
         try {
+            lc.debug(prefix);
+        } catch (RemoteException e) {
+            e.printStackTrace();
+        }
+    }
+
+    /*@Override
+    public void debug(String prefix) {
+        try {
             ROutputStream stream = new ROutputStream() {
                 @Override
                 public void close() throws RemoteException {
@@ -153,7 +162,7 @@ public class LindaClient implements Linda {
         } catch (RemoteException e) {
             e.printStackTrace();
         }
-    }
+    }*/
 
     // TO BE COMPLETED
 
