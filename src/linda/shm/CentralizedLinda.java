@@ -3,6 +3,7 @@ package linda.shm;
 import linda.Callback;
 import linda.Linda;
 import linda.Tuple;
+import linda.protocols.ReadWriteProtocol;
 
 import java.util.*;
 import java.util.concurrent.locks.Condition;
@@ -15,41 +16,46 @@ public class CentralizedLinda implements Linda {
     private final Map<Integer, LinkedList<Tuple>> tuplesByLength = new HashMap<>();
     private final LinkedList<Event> registeredEvents = new LinkedList<>();
 
-    private final ReentrantLock lock = new ReentrantLock();
+    private final ReentrantLock lock;
     private final LinkedList<Pair<Tuple, Condition>> readConditions = new LinkedList<>();
     private final LinkedList<Pair<Tuple, Condition>> takeConditions = new LinkedList<>();
     //private final Condition tupleAdded = lock.newCondition();
 
+    private final ReadWriteProtocol protocol;
+
     public CentralizedLinda() {
+        protocol = new ReadWriteProtocol();
+        lock = protocol.getLock();
     }
 
     @Override
     public void write(Tuple t) {
-        lock.lock();
+        protocol.requestWriting();
 
         getAssociatedList(t).addFirst(t);
         onTupleAdded(t);
 
-        lock.unlock();
+        protocol.finishWriting();
     }
 
     @Override
     public Tuple take(Tuple template) {
-        lock.lock();
+        protocol.requestWriting();
+
         Tuple t = null;
 
         try {
-            if ((t = tryTake(template)) == null) {
+            if ((t = internalTryTake(template)) == null) {
                 Condition condition = lock.newCondition();
                 takeConditions.addLast(new Pair<>(template, condition));
                 condition.await();
             }
 
-            t = tryTake(template);
+            t = internalTryTake(template);
         } catch (InterruptedException e) {
             e.printStackTrace();
         } finally {
-            lock.unlock();
+            protocol.finishWriting();
         }
 
         return t;
@@ -57,21 +63,21 @@ public class CentralizedLinda implements Linda {
 
     @Override
     public Tuple read(Tuple template) {
-        lock.lock();
+        protocol.requestReading();
         Tuple t = null;
 
         try {
-            if ((t = tryRead(template)) == null) {
+            if ((t = internalTryRead(template)) == null) {
                 Condition condition = lock.newCondition();
                 readConditions.addLast(new Pair<>(template, condition));
                 condition.await();
             }
 
-            t = tryRead(template);
+            t = internalTryRead(template);
         } catch (InterruptedException e) {
             e.printStackTrace();
         } finally {
-            lock.unlock();
+            protocol.finishReading();
         }
 
         return t;
@@ -79,10 +85,26 @@ public class CentralizedLinda implements Linda {
 
     @Override
     public Tuple tryTake(Tuple template) {
-        lock.lock();
+        protocol.requestWriting();
 
+        Tuple t = internalTryTake(template);
+
+        protocol.finishWriting();
+        return t;
+    }
+
+    @Override
+    public Tuple tryRead(Tuple template) {
+        protocol.requestReading();
+
+        Tuple t = internalTryRead(template);
+
+        protocol.finishReading();
+        return t;
+    }
+
+    private Tuple internalTryTake(Tuple template) {
         if(!tuplesByLength.containsKey(template.size())) {
-            lock.unlock();
             return null;
         }
 
@@ -99,22 +121,18 @@ public class CentralizedLinda implements Linda {
             break;
         }
 
-        lock.unlock();
         return foundT;
     }
 
-    @Override
-    public Tuple tryRead(Tuple template) {
-        lock.lock();
-
+    private Tuple internalTryRead(Tuple template) {
         Tuple foundT = tryTake(template);
         if(foundT != null) {
             // We must add foundT back because this is a read.
             // This also guarantees that accessed items are stored first.
+            // And because we are using LinkedLists, all of this is O(1)
             getAssociatedList(foundT).addFirst(foundT);
         }
 
-        lock.unlock();
         return foundT;
     }
 
