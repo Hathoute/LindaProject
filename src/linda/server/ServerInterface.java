@@ -1,25 +1,29 @@
 package linda.server;
-import linda.AsynchronousCallback;
-import linda.Callback;
 import linda.Linda;
 import linda.Tuple;
+import linda.server.cache.ClientCache;
+import linda.server.cache.TupleWrapper;
 
 import java.rmi.*;
 import java.util.Collection;
 
 public interface ServerInterface extends Remote {
+
+    public void subscribe(ClientCache cache) throws RemoteException;
+
     public void write(Tuple t) throws RemoteException;
-    public Tuple take(Tuple template) throws RemoteException;
 
-    public Tuple read(Tuple template) throws RemoteException;
+    public TupleWrapper take(Tuple template) throws RemoteException;
 
-    public Tuple tryTake(Tuple template) throws RemoteException;
+    public TupleWrapper read(Tuple template) throws RemoteException;
 
-    public Tuple tryRead(Tuple template) throws RemoteException;
+    public TupleWrapper tryTake(Tuple template) throws RemoteException;
 
-    public Collection<Tuple> takeAll(Tuple template) throws RemoteException;
+    public TupleWrapper tryRead(Tuple template) throws RemoteException;
 
-    public Collection<Tuple> readAll(Tuple template) throws RemoteException;
+    public Collection<TupleWrapper> takeAll(Tuple template) throws RemoteException;
+
+    public Collection<TupleWrapper> readAll(Tuple template) throws RemoteException;
 
     public enum eventMode { READ, TAKE };
 

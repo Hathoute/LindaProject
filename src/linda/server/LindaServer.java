@@ -3,59 +3,92 @@ import linda.AsynchronousCallback;
 import linda.Callback;
 import linda.Linda;
 import linda.Tuple;
+import linda.server.cache.ClientCache;
+import linda.server.cache.TupleWrapper;
 import linda.shm.CentralizedLinda;
+import linda.utils.Helper;
 
-import java.io.IOException;
-import java.io.OutputStream;
-import java.io.PrintStream;
-import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.rmi.*;
 import java.rmi.server.*;
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.concurrent.TimeUnit;
+import java.util.LinkedList;
+import java.util.List;
 
 public class LindaServer extends UnicastRemoteObject implements ServerInterface{
     private Linda myLinda;
+    private long nextUid;
+    private List<ClientCache> subscribedCaches;
 
     protected LindaServer() throws RemoteException {
         myLinda= new CentralizedLinda();
+        subscribedCaches = new LinkedList<>();
+        nextUid = 0;
+    }
+
+    @Override
+    public void subscribe(ClientCache cache) throws RemoteException {
+        subscribedCaches.add(cache);
+    }
+
+    private void notifyCaches(long uid) {
+        List<ClientCache> disconnected = new LinkedList<>();
+
+        for (ClientCache c : subscribedCaches) {
+            try {
+                c.invalidate(uid);
+            } catch (RemoteException re) {
+                disconnected.add(c);
+            }
+        }
+
+        for (ClientCache c : disconnected) {
+            subscribedCaches.remove(c);
+        }
     }
 
     @Override
     public void write(Tuple t) throws RemoteException {
-            myLinda.write(t);
+        myLinda.write(new TupleWrapper(t, ++nextUid));
     }
 
     @Override
-    public Tuple take(Tuple template) throws RemoteException {
-       return myLinda.take(template);
+    public TupleWrapper take(Tuple template) throws RemoteException {
+       TupleWrapper t = (TupleWrapper) myLinda.take(template);
+       notifyCaches(t.getUid());
+       return t;
     }
 
     @Override
-    public Tuple read(Tuple template) throws RemoteException {
-        return myLinda.read(template);
+    public TupleWrapper read(Tuple template) throws RemoteException {
+        return (TupleWrapper) myLinda.read(template);
     }
 
     @Override
-    public Tuple tryTake(Tuple template) throws RemoteException {
-        return myLinda.tryTake(template);
+    public TupleWrapper tryTake(Tuple template) throws RemoteException {
+        TupleWrapper t = (TupleWrapper) myLinda.tryTake(template);
+        if(t != null) {
+            notifyCaches(t.getUid());
+        }
+        return t;
     }
 
     @Override
-    public Tuple tryRead(Tuple template) throws RemoteException {
-        return myLinda.tryRead(template);
+    public TupleWrapper tryRead(Tuple template) throws RemoteException {
+        return (TupleWrapper) myLinda.tryRead(template);
     }
 
     @Override
-    public Collection<Tuple> takeAll(Tuple template) throws RemoteException {
-        return myLinda.takeAll(template);
+    public Collection<TupleWrapper> takeAll(Tuple template) throws RemoteException {
+        Collection<TupleWrapper> ts = Helper.collectionCast(myLinda.takeAll(template));
+
+        ts.parallelStream().forEach(x -> notifyCaches(x.getUid()));
+
+        return ts;
     }
 
     @Override
-    public Collection<Tuple> readAll(Tuple template) throws RemoteException {
-        return myLinda.readAll(template);
+    public Collection<TupleWrapper> readAll(Tuple template) throws RemoteException {
+        return Helper.collectionCast(myLinda.readAll(template));
     }
 
     @Override
@@ -64,6 +97,10 @@ public class LindaServer extends UnicastRemoteObject implements ServerInterface{
             @Override
             public void call(Tuple t) {
                 try {
+                    if(mode == Linda.eventMode.TAKE) {
+                        notifyCaches(((TupleWrapper) t).getUid());
+                    }
+
                     rcallback.call(t);
                 } catch (RemoteException e) {
                     e.printStackTrace();

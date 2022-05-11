@@ -67,7 +67,7 @@ public class ReadWriteProtocol {
 
     /** Must be called after requestWriting to unlock write lock.
      */
-    public void finishWriting() {
+    public void finishWriting(boolean releaseLock) {
         assert writing;
         assert mode == MODE.WRITING;
 
@@ -80,7 +80,8 @@ public class ReadWriteProtocol {
             writeConditions.poll().signal();
         }
 
-        lock.unlock();
+        if(releaseLock)
+            lock.unlock();
     }
 
     public void ensureWritingInContext() {

@@ -35,7 +35,7 @@ public class CentralizedLinda implements Linda {
         getAssociatedList(t).addFirst(t);
         onTupleAdded(t);
 
-        protocol.finishWriting();
+        protocol.finishWriting(true);
     }
 
     @Override
@@ -50,7 +50,7 @@ public class CentralizedLinda implements Linda {
                 Condition condition = protocol.getLock().newCondition();
                 takeConditions.addLast(new Pair<>(template, condition));
                 // We report that writing is finished, to allow reading mode.
-                protocol.finishWriting();
+                protocol.finishWriting(false);
                 // When there's a signal on the condition, it (certainly) gets
                 // signaled from WRITING mode, and the lock gets transferred to
                 // this thread.
@@ -58,11 +58,13 @@ public class CentralizedLinda implements Linda {
                 awaited = true;
             }
 
-        } catch (InterruptedException e) {
+        } catch (Exception e) {
             e.printStackTrace();
         } finally {
             if(!awaited)
-                protocol.finishWriting();
+                protocol.finishWriting(true);
+            else
+                protocol.getLock().unlock();
         }
 
         return t;
@@ -102,7 +104,7 @@ public class CentralizedLinda implements Linda {
 
         Tuple t = internalTryTake(template);
 
-        protocol.finishWriting();
+        protocol.finishWriting(true);
         return t;
     }
 
@@ -157,7 +159,7 @@ public class CentralizedLinda implements Linda {
         protocol.requestWriting();
 
         if(!tuplesByLength.containsKey(template.size())) {
-            protocol.finishWriting();
+            protocol.finishWriting(true);
             return null;
         }
 
@@ -174,7 +176,7 @@ public class CentralizedLinda implements Linda {
             removeTuple(t);
         }
 
-        protocol.finishWriting();
+        protocol.finishWriting(true);
         return foundTuples;
     }
 
@@ -235,7 +237,7 @@ public class CentralizedLinda implements Linda {
                 protocol.finishReading();
             }
             else {
-                protocol.finishWriting();
+                protocol.finishWriting(true);
             }
         }
 
