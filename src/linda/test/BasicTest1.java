@@ -12,7 +12,7 @@ public class BasicTest1 {
         new Thread() {
             public void run() {
                 try {
-                    Thread.sleep(2);
+                    Thread.sleep(2000);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }

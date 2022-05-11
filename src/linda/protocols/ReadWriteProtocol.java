@@ -31,7 +31,7 @@ public class ReadWriteProtocol {
         return lock;
     }
 
-    public void requestWriting() {
+    private void ensureWriting() {
         lock.lock();
 
         if(mode != MODE.WRITING) {
@@ -55,10 +55,21 @@ public class ReadWriteProtocol {
         lock.unlock();
     }
 
+    /** Requests writing permission from protocol.
+     * Locks the mutex to the calling thread, and unlocks it
+     * after calling finishWriting or awaiting a condition on this.getLock()
+     */
+    public void requestWriting() {
+        ensureWriting();
+
+        lock.lock();
+    }
+
+    /** Must be called after requestWriting to unlock write lock.
+     */
     public void finishWriting() {
         assert writing;
         assert mode == MODE.WRITING;
-        lock.lock();
 
         writing = false;
         if(readRequest) {
@@ -70,6 +81,16 @@ public class ReadWriteProtocol {
         }
 
         lock.unlock();
+    }
+
+    public void ensureWritingInContext() {
+        if(mode != MODE.WRITING) {
+            throw new RuntimeException("Current mode be in write mode");
+        }
+
+        if(!lock.isHeldByCurrentThread()) {
+            throw new RuntimeException("Calling thread must hold the write lock");
+        }
     }
 
     public void requestReading() {

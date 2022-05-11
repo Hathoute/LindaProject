@@ -16,7 +16,7 @@ public class CentralizedLinda implements Linda {
     private final Map<Integer, LinkedList<Tuple>> tuplesByLength = new HashMap<>();
     private final LinkedList<Event> registeredEvents = new LinkedList<>();
 
-    private final ReentrantLock lock;
+    private final ReentrantLock readLock;
     private final LinkedList<Pair<Tuple, Condition>> readConditions = new LinkedList<>();
     private final LinkedList<Pair<Tuple, Condition>> takeConditions = new LinkedList<>();
     //private final Condition tupleAdded = lock.newCondition();
@@ -25,7 +25,7 @@ public class CentralizedLinda implements Linda {
 
     public CentralizedLinda() {
         protocol = new ReadWriteProtocol();
-        lock = protocol.getLock();
+        readLock = new ReentrantLock();
     }
 
     @Override
@@ -43,19 +43,26 @@ public class CentralizedLinda implements Linda {
         protocol.requestWriting();
 
         Tuple t = null;
+        boolean awaited = false;
 
         try {
-            if ((t = internalTryTake(template)) == null) {
-                Condition condition = lock.newCondition();
+            while ((t = internalTryTake(template)) == null) {
+                Condition condition = protocol.getLock().newCondition();
                 takeConditions.addLast(new Pair<>(template, condition));
+                // We report that writing is finished, to allow reading mode.
+                protocol.finishWriting();
+                // When there's a signal on the condition, it (certainly) gets
+                // signaled from WRITING mode, and the lock gets transferred to
+                // this thread.
                 condition.await();
+                awaited = true;
             }
 
-            t = internalTryTake(template);
         } catch (InterruptedException e) {
             e.printStackTrace();
         } finally {
-            protocol.finishWriting();
+            if(!awaited)
+                protocol.finishWriting();
         }
 
         return t;
@@ -65,19 +72,25 @@ public class CentralizedLinda implements Linda {
     public Tuple read(Tuple template) {
         protocol.requestReading();
         Tuple t = null;
+        boolean awaited = false;
 
         try {
-            if ((t = internalTryRead(template)) == null) {
-                Condition condition = lock.newCondition();
+            while ((t = internalTryRead(template)) == null) {
+                Condition condition = readLock.newCondition();
                 readConditions.addLast(new Pair<>(template, condition));
+                // Same for write()...
+                protocol.finishReading();
+                readLock.lock();
                 condition.await();
+                readLock.unlock();
+                awaited = true;
             }
 
-            t = internalTryRead(template);
         } catch (InterruptedException e) {
             e.printStackTrace();
         } finally {
-            protocol.finishReading();
+            if(!awaited)
+                protocol.finishReading();
         }
 
         return t;
@@ -125,23 +138,26 @@ public class CentralizedLinda implements Linda {
     }
 
     private Tuple internalTryRead(Tuple template) {
-        Tuple foundT = tryTake(template);
-        if(foundT != null) {
-            // We must add foundT back because this is a read.
-            // This also guarantees that accessed items are stored first.
-            // And because we are using LinkedLists, all of this is O(1)
-            getAssociatedList(foundT).addFirst(foundT);
+        if(!tuplesByLength.containsKey(template.size())) {
+            return null;
         }
 
-        return foundT;
+        LinkedList<Tuple> tupleList = getAssociatedList(template);
+        for (Tuple t : tupleList) {
+            if (t.matches(template)) {
+                return t;
+            }
+        }
+
+        return null;
     }
 
     @Override
     public Collection<Tuple> takeAll(Tuple template) {
-        lock.lock();
+        protocol.requestWriting();
 
         if(!tuplesByLength.containsKey(template.size())) {
-            lock.unlock();
+            protocol.finishWriting();
             return null;
         }
 
@@ -158,13 +174,13 @@ public class CentralizedLinda implements Linda {
             removeTuple(t);
         }
 
-        lock.unlock();
+        protocol.finishWriting();
         return foundTuples;
     }
 
     @Override
     public Collection<Tuple> readAll(Tuple template) {
-        lock.lock();
+        protocol.requestReading();
         Collection<Tuple> foundTuples = takeAll(template);
 
         if(foundTuples.size() > 0) {
@@ -175,7 +191,7 @@ public class CentralizedLinda implements Linda {
         }
 
 
-        lock.unlock();
+        protocol.finishReading();
         return foundTuples;
     }
 
@@ -188,12 +204,17 @@ public class CentralizedLinda implements Linda {
      */
     @Override
     public void eventRegister(eventMode mode, eventTiming timing, Tuple template, Callback callback) {
-        lock.lock();
-
         boolean registerEvent = true;
         Event ev = new Event(mode, template, callback);
         if(timing == eventTiming.IMMEDIATE && tuplesByLength.containsKey(template.size())) {
             LinkedList<Tuple> tuples = getAssociatedList(template);
+            if(ev.mode == eventMode.READ) {
+                protocol.requestReading();
+            }
+            else {
+                protocol.requestWriting();
+            }
+
             for (Tuple t : tuples) {
                 if (!canFireEvent(ev, t)) {
                     continue;
@@ -209,6 +230,13 @@ public class CentralizedLinda implements Linda {
                 ev.callback.call(t);
                 break;
             }
+
+            if(ev.mode == eventMode.READ) {
+                protocol.finishReading();
+            }
+            else {
+                protocol.finishWriting();
+            }
         }
 
         if(registerEvent) {
@@ -219,16 +247,16 @@ public class CentralizedLinda implements Linda {
                 registeredEvents.addFirst(ev);
             }
         }
-
-        lock.unlock();
     }
 
     @Override
     public void debug(String prefix) {
-        lock.lock();
+        protocol.requestReading();
+
         prefix = prefix + " ";
         System.out.println(prefix + (formatTuples() + formatEvents()).replaceAll("\n", "\n"+prefix) + "- DEBUG END");
-        lock.unlock();
+
+        protocol.finishReading();
     }
 
     // Internal functions
@@ -237,10 +265,13 @@ public class CentralizedLinda implements Linda {
      * @param t Tuple to write
      */
     private void onTupleAdded(Tuple t) {
+        protocol.ensureWritingInContext();
+
         // Un clone des evenements à l'instant actuel puisque les callbacks peuvent ajouter des evenements.
         List<Event> currentEvents = (List<Event>) registeredEvents.clone();
 
         // Check reads
+        readLock.lock();
         for (Pair<Tuple, Condition> p : readConditions.stream()
                 .filter(p -> p.getFirst().contains(t))
                 .collect(Collectors.toList())) {
@@ -255,6 +286,7 @@ public class CentralizedLinda implements Linda {
             registeredEvents.remove(ev);
             ev.callback.call(t);
         }
+        readLock.unlock();
 
 
         // Check first take
@@ -296,6 +328,8 @@ public class CentralizedLinda implements Linda {
     }
 
     private void removeTuple(Tuple t) {
+        protocol.ensureWritingInContext();
+
         LinkedList<Tuple> associatedList = getAssociatedList(t);
         associatedList.remove(t);
         if(associatedList.isEmpty()) {
