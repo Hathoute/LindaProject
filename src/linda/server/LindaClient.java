@@ -3,6 +3,7 @@ package linda.server;
 import linda.Callback;
 import linda.Linda;
 import linda.Tuple;
+import linda.server.cache.ClientCache;
 import linda.server.cache.ClientCacheImpl;
 import linda.server.cache.TupleWrapper;
 import linda.utils.Helper;
@@ -20,9 +21,9 @@ public class LindaClient implements Linda {
     /** Initializes the Linda implementation.
      *  @param serverURI the URI of the server, e.g. "rmi://localhost:4000/LindaServer" or "//localhost:4000/LindaServer".
      */
-    private ServerInterface lc;
-    private ClientCacheImpl cache;
-    private final boolean useCache;
+    protected ServerInterface lc;
+    protected ClientCache cache;
+    protected boolean useCache;
 
     public LindaClient(String serverURI, boolean useCache) {
         this.useCache = useCache;
@@ -30,8 +31,7 @@ public class LindaClient implements Linda {
             lc = (ServerInterface) Naming.lookup(serverURI);
             if(useCache) {
                 cache = new ClientCacheImpl();
-                UnicastRemoteObject.exportObject(cache, 0);
-                lc.subscribe(cache);
+                lc.subscribe(cache.getInvalidator());
             }
         } catch (Exception e) {
             e.printStackTrace();

@@ -1,7 +1,7 @@
 package linda.server;
 import linda.Linda;
 import linda.Tuple;
-import linda.server.cache.ClientCache;
+import linda.server.cache.CacheInvalidator;
 import linda.server.cache.TupleWrapper;
 
 import java.rmi.*;
@@ -9,7 +9,7 @@ import java.util.Collection;
 
 public interface ServerInterface extends Remote {
 
-    public void subscribe(ClientCache cache) throws RemoteException;
+    public void subscribe(CacheInvalidator cache) throws RemoteException;
 
     public void write(Tuple t) throws RemoteException;
 

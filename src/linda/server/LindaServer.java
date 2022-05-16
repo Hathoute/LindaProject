@@ -3,8 +3,9 @@ import linda.AsynchronousCallback;
 import linda.Callback;
 import linda.Linda;
 import linda.Tuple;
-import linda.server.cache.ClientCache;
+import linda.server.cache.CacheInvalidator;
 import linda.server.cache.TupleWrapper;
+import linda.server.multiserver.InternalClient;
 import linda.shm.CentralizedLinda;
 import linda.utils.Helper;
 
@@ -13,27 +14,33 @@ import java.rmi.server.*;
 import java.util.Collection;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class LindaServer extends UnicastRemoteObject implements ServerInterface{
     private Linda myLinda;
     private long nextUid;
-    private List<ClientCache> subscribedCaches;
+    private List<CacheInvalidator> subscribedCaches;
+    private InternalClient fallback;
 
-    protected LindaServer() throws RemoteException {
+    public LindaServer() throws RemoteException {
         myLinda= new CentralizedLinda();
         subscribedCaches = new LinkedList<>();
         nextUid = 0;
     }
 
+    public void setFallback(String serverURL) {
+        fallback = new InternalClient(serverURL, this::notifyCaches);
+    }
+
     @Override
-    public void subscribe(ClientCache cache) throws RemoteException {
+    public void subscribe(CacheInvalidator cache) throws RemoteException {
         subscribedCaches.add(cache);
     }
 
-    private void notifyCaches(long uid) {
-        List<ClientCache> disconnected = new LinkedList<>();
+    private synchronized void notifyCaches(long uid) {
+        List<CacheInvalidator> disconnected = new LinkedList<>();
 
-        for (ClientCache c : subscribedCaches) {
+        for (CacheInvalidator c : subscribedCaches) {
             try {
                 c.invalidate(uid);
             } catch (RemoteException re) {
@@ -41,7 +48,7 @@ public class LindaServer extends UnicastRemoteObject implements ServerInterface{
             }
         }
 
-        for (ClientCache c : disconnected) {
+        for (CacheInvalidator c : disconnected) {
             subscribedCaches.remove(c);
         }
     }
@@ -60,7 +67,43 @@ public class LindaServer extends UnicastRemoteObject implements ServerInterface{
 
     @Override
     public TupleWrapper read(Tuple template) throws RemoteException {
-        return (TupleWrapper) myLinda.read(template);
+        AtomicReference<TupleWrapper> tw = new AtomicReference<>((TupleWrapper) myLinda.tryRead(template));
+        if(tw.get() != null)
+            return tw.get();
+
+        if(fallback != null) {
+            AtomicReference<Thread> t1 = new AtomicReference<>(null), t2 = new AtomicReference<>(null);
+            t1.set(new Thread(() -> {
+                TupleWrapper t = (TupleWrapper) myLinda.read(template);
+                tw.set(t);
+                t2.get().interrupt();
+            }));
+            t2.set(new Thread(() -> {
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                TupleWrapper t = (TupleWrapper) fallback.read(template);
+                tw.set(t);
+                t1.get().interrupt();
+            }));
+
+            t1.get().start();
+            t2.get().start();
+
+            try {
+                t1.get().join();
+                t2.get().join();
+            } catch (InterruptedException e) {
+                System.out.println("Interrupted");
+            }
+
+            return tw.get();
+        }
+        else {
+            return (TupleWrapper) myLinda.read(template);
+        }
     }
 
     @Override
