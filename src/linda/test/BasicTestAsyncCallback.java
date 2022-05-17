@@ -8,7 +8,7 @@ import linda.Linda.eventTiming;
 public class BasicTestAsyncCallback {
 
     private static class MyCallback implements Callback {
-        public void call(Tuple t) {
+        public void call(long eventId, Tuple t) {
             try {
                 Thread.sleep(1000);
             } catch (InterruptedException e) {

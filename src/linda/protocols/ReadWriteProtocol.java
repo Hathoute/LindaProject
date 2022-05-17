@@ -86,7 +86,7 @@ public class ReadWriteProtocol {
 
     public void ensureWritingInContext() {
         if(mode != MODE.WRITING) {
-            throw new RuntimeException("Current mode be in write mode");
+            throw new RuntimeException("Current mode must be in write mode");
         }
 
         if(!lock.isHeldByCurrentThread()) {

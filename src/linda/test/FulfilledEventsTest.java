@@ -65,7 +65,7 @@ public class FulfilledEventsTest {
                     Tuple template = possibleTemplates.get(random.nextInt(possibleTemplates.size()));
                     Callback callback = new Callback() {
                         @Override
-                        public void call(Tuple t) {
+                        public void call(long eventId, Tuple t) {
                             lock.lock();
                             fulfilled.value++;
                             lock.unlock();

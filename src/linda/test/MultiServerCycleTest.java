@@ -10,9 +10,8 @@ import java.rmi.registry.LocateRegistry;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Random;
 
-public class MultiServerTest {
+public class MultiServerCycleTest {
 
     static class ServerData {
         public Integer port;
@@ -46,8 +45,8 @@ public class MultiServerTest {
     public static void main(String[] a) {
         // Start servers
         List<LindaClient> clients = new ArrayList<>();
+        List<LindaServer> servers = new ArrayList<>();
         try {
-            LindaServer previous = null;
             for (ServerData sd : hierarchy) {
                 LindaServer ls = new LindaServer();
 
@@ -55,12 +54,13 @@ public class MultiServerTest {
                 Naming.rebind(sd.toString(), ls);
                 System.out.println("LindaServer started at " + sd);
 
-                if(previous != null) {
-                    previous.addFallback(sd.toString());
-                }
-                previous = ls;
-
                 clients.add(new LindaClient(sd.toString()));
+                servers.add(ls);
+            }
+
+            for(int i = 0; i < servers.size() - 1; i++) {
+                servers.get(i).addFallback(hierarchy.get(i+1).toString());
+                servers.get(i+1).addFallback(hierarchy.get(i).toString());
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -72,7 +72,7 @@ public class MultiServerTest {
             public void run() {
                 Tuple template = new Tuple(Integer.class, String.class);
                 System.out.println("Attempting to read template " + template);
-                Tuple t = mainClient.read(template);
+                Tuple t = mainClient.take(template);
                 System.out.println("Found " + t);
 
                 System.out.println("Attempting to take template " + template);

@@ -7,13 +7,13 @@ import java.util.Timer;
 
 public class StressTest {
 
-    private static int READS_PER_THREAD = 10000;
+    private static int READS_PER_THREAD = 100000;
     private static int THREADS = 8;
 
     public static void main(String[] a) {
                 
         //final Linda linda = new linda.shm.CentralizedLinda();
-        final Linda linda = new linda.server.LindaClient("//localhost:4000/LindaServer");
+        final Linda linda = new linda.server.LindaClient("//localhost:4000/LindaServer", true);
 
         for(int t = 0; t < THREADS; t++) {
             int finalT = t;
@@ -27,7 +27,7 @@ public class StressTest {
                         res = linda.read(motif);
                     }
                     long endTime = System.currentTimeMillis();
-                    System.out.println("Thread " + finalT + " finished in " + (endTime-startTime) + "ms");
+                    System.out.println("Thread " + finalT + " finished in " + (endTime-startTime) + "ms, avg: " + (READS_PER_THREAD)/(endTime-startTime) + " reads/ms");
                 }
             }.start();
         }

@@ -13,7 +13,7 @@ public class RCallbackImpl implements RCallback{
     }
 
     @Override
-    public void call(Tuple t) throws RemoteException {
-        callback.call(t);
+    public void call(long eventId, Tuple t) throws RemoteException {
+        callback.call(eventId, t);
     }
 }

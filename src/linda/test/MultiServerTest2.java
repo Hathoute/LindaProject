@@ -10,9 +10,8 @@ import java.rmi.registry.LocateRegistry;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Random;
 
-public class MultiServerTest {
+public class MultiServerTest2 {
 
     static class ServerData {
         public Integer port;
@@ -37,7 +36,7 @@ public class MultiServerTest {
     }
 
     public static List<ServerData> hierarchy = Arrays.asList(
-            new ServerData("localhost", "Server1", 4000),
+            new ServerData("localhost", "Server1", 4000),       // Main server
             new ServerData("localhost", "Server2", 4001),
             new ServerData("localhost", "Server3", 4002),
             new ServerData("localhost", "Server4", 4003)
@@ -46,8 +45,8 @@ public class MultiServerTest {
     public static void main(String[] a) {
         // Start servers
         List<LindaClient> clients = new ArrayList<>();
+        LindaServer mainServer = null;
         try {
-            LindaServer previous = null;
             for (ServerData sd : hierarchy) {
                 LindaServer ls = new LindaServer();
 
@@ -55,10 +54,12 @@ public class MultiServerTest {
                 Naming.rebind(sd.toString(), ls);
                 System.out.println("LindaServer started at " + sd);
 
-                if(previous != null) {
-                    previous.addFallback(sd.toString());
+                if(mainServer == null) {
+                    mainServer = ls;
                 }
-                previous = ls;
+                else {
+                    mainServer.addFallback(sd.toString());
+                }
 
                 clients.add(new LindaClient(sd.toString()));
             }
@@ -93,8 +94,8 @@ public class MultiServerTest {
                     e.printStackTrace();
                 }
 
-                System.out.println("Writing to 2nd fallback server");
-                clients.get(3).write(new Tuple(10, "ttt"));
+                System.out.println("Writing to 1st fallback server");
+                clients.get(1).write(new Tuple(10, "ttt"));
             }
         }.start();
 

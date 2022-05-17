@@ -47,7 +47,7 @@ public class Manager implements Runnable {
     }
 
     private class CbGetResult implements linda.Callback {
-        public void call(Tuple t) {  // [ Result, ?UUID, ?String, ?Integer ]
+        public void call(long eventId, Tuple t) {  // [ Result, ?UUID, ?String, ?Integer ]
             String s = (String) t.get(2);
             Integer v = (Integer) t.get(3);
             if (v < bestvalue) {

@@ -22,7 +22,9 @@ public class InternalMultiServerCache extends ClientCacheImpl {
 
     @Override
     public void invalidate(long uid) {
-        super.invalidate(uid);
-        this.notifier.notifyInvalidation(uid);
+        if(cachedTuples.containsKey(uid)) {
+            super.invalidate(uid);
+            this.notifier.notifyInvalidation(uid);
+        }
     }
 }

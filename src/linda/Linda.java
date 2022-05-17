@@ -55,8 +55,32 @@ public interface Linda {
      * @param timing (potentially) immediate or only future firing.
      * @param template the filtering template.
      * @param callback the callback to call if a matching tuple appears.
+     * @return 0 if the event fired immediately, or a unique eventId if not.
      */
-    public void eventRegister(eventMode mode, eventTiming timing, Tuple template, Callback callback);
+    public long eventRegister(eventMode mode, eventTiming timing, Tuple template, Callback callback);
+
+    /** Registers a callback which will be called when a tuple matching the template appears.
+     * If the mode is Take, the found tuple is removed from the tuplespace.
+     * The callback is fired once. It may re-register itself if necessary.
+     * If timing is immediate, the callback may immediately fire if a matching tuple is already present; if timing is future, current tuples are ignored.
+     * Beware: a callback should never block as the calling context may be the one of the writer (see also {@link AsynchronousCallback} class).
+     * Callbacks are not ordered: if more than one may be fired, the chosen one is arbitrary.
+     * Beware of loop with a READ/IMMEDIATE re-registering callback !
+     *
+     * @param requestId a unique requestId.
+     * @param mode read or take mode.
+     * @param timing (potentially) immediate or only future firing.
+     * @param template the filtering template.
+     * @param callback the callback to call if a matching tuple appears.
+     * @return 0 if the event fired immediately, or a unique eventId if not.
+     */
+    public long eventRegister(long requestId, eventMode mode, eventTiming timing, Tuple template, Callback callback);
+
+    /** Unregisters an event given its event id
+     *
+     * @param eventId registered event's id
+     */
+    public void unregisterEvent(long eventId);
 
     /** To debug, prints any information it wants (e.g. the tuples in tuplespace or the registered callbacks), prefixed by <code>prefix</code. */
     public void debug(String prefix);

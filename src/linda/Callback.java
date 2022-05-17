@@ -10,5 +10,5 @@ public interface Callback {
      * 
      * @param t the new tuple
      */
-    void call(Tuple t);
+    void call(long eventId, Tuple t);
 }

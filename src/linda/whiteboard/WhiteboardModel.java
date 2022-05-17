@@ -135,7 +135,7 @@ public class WhiteboardModel {
     /***************************************************************/
     
     private class CallbackShape implements linda.Callback {
-		public void call(Tuple t) {
+		public void call(long eventId, Tuple t) {
 			System.out.println("Draw Request received from server");
                         ColoredShape shape = (ColoredShape)(t.get(2));
                         lines.add(shape);
@@ -145,7 +145,7 @@ public class WhiteboardModel {
     }
 
     private class CallbackErase implements linda.Callback {
-		public void call(Tuple t) {
+		public void call(long eventId, Tuple t) {
 			System.out.println("Erase Request received from server");
                         lines.clear();
                         view.setClear();
@@ -154,7 +154,7 @@ public class WhiteboardModel {
     }
     
     private class CallbackRotate implements linda.Callback {
-		public void call(Tuple t) {
+		public void call(long eventId, Tuple t) {
 			System.out.println("Rotate Request received from server");
                         Integer angle = (Integer)(t.get(2));
                         // Let's be careful: rotation with center in WIDTH/2, HEIGHT/2

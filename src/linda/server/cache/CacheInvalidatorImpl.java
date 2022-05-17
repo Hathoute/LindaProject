@@ -13,6 +13,7 @@ public class CacheInvalidatorImpl extends UnicastRemoteObject implements CacheIn
 
     @Override
     public void invalidate(long uid) throws RemoteException {
+        System.out.println("invalidating " + uid);
         ci.invalidate(uid);
     }
 }

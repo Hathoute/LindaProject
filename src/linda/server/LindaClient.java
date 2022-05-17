@@ -139,23 +139,45 @@ public class LindaClient implements Linda {
     }
 
     @Override
-    public void eventRegister(eventMode mode, eventTiming timing, Tuple template, Callback callback) {
+    public long eventRegister(eventMode mode, eventTiming timing, Tuple template, Callback callback) {
+        return eventRegister(Helper.getNextUniqueId(), mode, timing, template, callback);
+    }
+
+    @Override
+    public long eventRegister(long requestId, eventMode mode, eventTiming timing, Tuple template, Callback callback) {
         if(useCache && mode == eventMode.READ && timing == eventTiming.IMMEDIATE) {
             Tuple t = cache.tryRead(template);
             if(t != null) {
-                callback.call(t);
-                return;
+                callback.call(0, t);
+                return 0;
             }
         }
 
+        long eventId = 0;
         try {
-            RCallback rcallback= new RCallbackImpl(callback);
+            RCallback rcallback= new RCallbackImpl(new Callback() {
+                @Override
+                public void call(long eventId, Tuple t) {
+                    cache.cache((TupleWrapper) t);
+                    callback.call(eventId, t);
+                }
+            });
             UnicastRemoteObject.exportObject(rcallback, 0);
-            lc.eventRegister(mode, timing, template, rcallback);
+            eventId = lc.eventRegister(requestId, mode, timing, template, rcallback);
         } catch (RemoteException e) {
             e.printStackTrace();
         }
 
+        return eventId;
+    }
+
+    @Override
+    public void unregisterEvent(long eventId) {
+        try {
+            lc.unregisterEvent(eventId);
+        } catch (RemoteException e) {
+            e.printStackTrace();
+        }
     }
 
     @Override

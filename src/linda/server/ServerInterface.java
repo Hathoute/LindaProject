@@ -25,11 +25,9 @@ public interface ServerInterface extends Remote {
 
     public Collection<TupleWrapper> readAll(Tuple template) throws RemoteException;
 
-    public enum eventMode { READ, TAKE };
+    public long eventRegister(long requestId, Linda.eventMode mode, Linda.eventTiming timing, Tuple template, RCallback rcallback) throws RemoteException;
 
-    public enum eventTiming { IMMEDIATE, FUTURE };
-
-    public void eventRegister(Linda.eventMode mode, Linda.eventTiming timing, Tuple template, RCallback rcallback) throws RemoteException;
+    public void unregisterEvent(long eventId) throws RemoteException;
 
     public void debug(String prefix) throws RemoteException;
 

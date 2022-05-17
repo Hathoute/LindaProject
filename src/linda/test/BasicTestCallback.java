@@ -11,7 +11,7 @@ public class BasicTestCallback {
     private static Tuple cbmotif;
     
     private static class MyCallback implements Callback {
-        public void call(Tuple t) {
+        public void call(long eventId, Tuple t) {
             System.out.println("CB got "+t);
             linda.eventRegister(eventMode.TAKE, eventTiming.IMMEDIATE, cbmotif, this);
             try {

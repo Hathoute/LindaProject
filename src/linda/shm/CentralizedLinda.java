@@ -4,6 +4,7 @@ import linda.Callback;
 import linda.Linda;
 import linda.Tuple;
 import linda.protocols.ReadWriteProtocol;
+import linda.utils.Helper;
 
 import java.util.*;
 import java.util.concurrent.locks.Condition;
@@ -205,9 +206,9 @@ public class CentralizedLinda implements Linda {
      * @param callback the callback to call if a matching tuple appears.
      */
     @Override
-    public void eventRegister(eventMode mode, eventTiming timing, Tuple template, Callback callback) {
+    public long eventRegister(eventMode mode, eventTiming timing, Tuple template, Callback callback) {
         boolean registerEvent = true;
-        Event ev = new Event(mode, template, callback);
+        Event ev = new Event(mode, template, callback, Helper.getNextUniqueId());
         if(timing == eventTiming.IMMEDIATE && tuplesByLength.containsKey(template.size())) {
             LinkedList<Tuple> tuples = getAssociatedList(template);
             if(ev.mode == eventMode.READ) {
@@ -229,7 +230,7 @@ public class CentralizedLinda implements Linda {
                     removeTuple(t);
                 }
                 // Call event
-                ev.callback.call(t);
+                ev.callback.call(0, t);
                 break;
             }
 
@@ -242,11 +243,35 @@ public class CentralizedLinda implements Linda {
         }
 
         if(registerEvent) {
-            if(ev.mode == eventMode.READ) {
-                registeredEvents.add(ev);
+            synchronized (registeredEvents) {
+                if (ev.mode == eventMode.READ) {
+                    registeredEvents.add(ev);
+                } else {
+                    registeredEvents.addFirst(ev);
+                }
             }
-            else {
-                registeredEvents.addFirst(ev);
+        }
+
+        return registerEvent ? ev.eventId : 0;
+    }
+
+    @Override
+    public long eventRegister(long requestId, eventMode mode, eventTiming timing, Tuple template, Callback callback) {
+        throw new IllegalArgumentException("requestId");
+    }
+
+    @Override
+    public void unregisterEvent(long eventId) {
+        synchronized (registeredEvents) {
+            Event event = registeredEvents.stream()
+                    .filter(x -> x.eventId == eventId)
+                    .findFirst()
+                    .orElse(null);
+
+            if (event != null) {
+                synchronized (registeredEvents) {
+                    registeredEvents.remove(event);
+                }
             }
         }
     }
@@ -285,8 +310,10 @@ public class CentralizedLinda implements Linda {
         for (Event ev : currentEvents.stream()
                     .filter(e -> e.mode == eventMode.READ && canFireEvent(e, t))
                     .collect(Collectors.toList())) {
-            registeredEvents.remove(ev);
-            ev.callback.call(t);
+            synchronized (registeredEvents) {
+                registeredEvents.remove(ev);
+            }
+            ev.callback.call(ev.eventId, t);
         }
         readLock.unlock();
 
@@ -307,8 +334,10 @@ public class CentralizedLinda implements Linda {
                 .findFirst().orElse(null);
         if(takeEvent != null) {
             getAssociatedList(t).remove(t);
-            registeredEvents.remove(takeEvent);
-            takeEvent.callback.call(t);
+            synchronized (registeredEvents) {
+                registeredEvents.remove(takeEvent);
+            }
+            takeEvent.callback.call(takeEvent.eventId, t);
         }
     }
 
@@ -368,11 +397,13 @@ public class CentralizedLinda implements Linda {
         private final eventMode mode;
         private final Tuple template;
         private final Callback callback;
+        private final long eventId;
 
-        public Event(eventMode mode, Tuple template, Callback callback) {
+        public Event(eventMode mode, Tuple template, Callback callback, long eventId) {
             this.mode = mode;
             this.template = template;
             this.callback = callback;
+            this.eventId = eventId;
         }
 
         public eventMode getMode() {
@@ -385,6 +416,10 @@ public class CentralizedLinda implements Linda {
 
         public Callback getCallback() {
             return callback;
+        }
+
+        public long getEventId() {
+            return eventId;
         }
 
         @Override
