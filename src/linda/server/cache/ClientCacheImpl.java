@@ -11,23 +11,20 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class ClientCacheImpl implements ClientCache {
-    protected Map<Long, Tuple> cachedTuples;
-    protected ReadWriteProtocol protocol;
-    protected CacheInvalidator invalidator;
+    private Map<Long, Tuple> cachedTuples;
+    private ReadWriteProtocol protocol;
 
     public ClientCacheImpl() throws RemoteException {
         cachedTuples = new HashMap<>();
         protocol = new ReadWriteProtocol();
     }
 
-    @Override
     public void cache(TupleWrapper t) {
         protocol.requestWriting();
         cachedTuples.put(t.getUid(), t);
         protocol.finishWriting(true);
     }
 
-    @Override
     public Tuple tryRead(Tuple template) {
         protocol.requestReading();
 
@@ -44,21 +41,9 @@ public class ClientCacheImpl implements ClientCache {
     }
 
     @Override
-    public void invalidate(long uid)  {
+    public void invalidate(long uid) throws RemoteException {
         protocol.requestWriting();
         cachedTuples.remove(uid);
         protocol.finishWriting(true);
-    }
-
-    @Override
-    public CacheInvalidator getInvalidator() {
-        if(invalidator == null) {
-            try {
-                invalidator = new CacheInvalidatorImpl(this::invalidate);
-            } catch (RemoteException e) {
-                e.printStackTrace();
-            }
-        }
-        return invalidator;
     }
 }
